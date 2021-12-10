@@ -32,6 +32,8 @@ library(kableExtra)
 library(epiDisplay)
 
 library(lubridate)
+library(ggridges)
+library(reshape2)
 
 dl <- tempfile()
 
@@ -162,3 +164,14 @@ temperaturedata <- temperaturedata %>%
   filter(!is.na(temperature) & !is.na(humidity)) %>%
   dplyr::select (timeofcapture,temperature,humidity) %>%
   arrange(timeofcapture)
+
+ tempplot <- temperaturedata %>% ggplot(aes(timeofcapture, temperature,col='red')) +
+      geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
+ humplot <- temperaturedata %>% ggplot(aes(timeofcapture, humidity,col='blue')) +
+       geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
+ grid.arrange(tempplot, humplot,  nrow=2)
+ 
+ 
+  df_melt <- melt(temperaturedata[, c("timeofcapture", "temperature", "humidity")], id="timeofcapture")  # melt by date. 
+  gg <- ggplot(df_melt, aes(x=timeofcapture))  # setup
+  gg + geom_line(aes(y=value, color=variable), size=1) + scale_color_discrete(name="Legend") 
