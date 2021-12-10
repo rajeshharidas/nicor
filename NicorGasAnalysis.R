@@ -22,6 +22,8 @@ if (!require(lubridate))
 if (!require(epiDisplay))
   install.packages("epiDisplay")
 
+if (!require(dygraphs))
+  install.packages("dygraphs")
 
 library(tidyverse)
 library(caret)
@@ -34,6 +36,9 @@ library(epiDisplay)
 library(lubridate)
 library(ggridges)
 library(reshape2)
+
+library(dygraphs)
+library(xts)
 
 dl <- tempfile()
 
@@ -165,6 +170,9 @@ temperaturedata <- temperaturedata %>%
   dplyr::select (timeofcapture,temperature,humidity) %>%
   arrange(timeofcapture)
 
+temperaturedata <- temperaturedata %>% mutate (ftemperature = (temperature * 1.8) + 32)
+sensordata <- sensordata %>% mutate (ftemperature = (temperature * 1.8) + 32)
+
  tempplot <- temperaturedata %>% ggplot(aes(timeofcapture, temperature,col='red')) +
       geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
  humplot <- temperaturedata %>% ggplot(aes(timeofcapture, humidity,col='blue')) +
@@ -172,6 +180,16 @@ temperaturedata <- temperaturedata %>%
  grid.arrange(tempplot, humplot,  nrow=2)
  
  
-  df_melt <- melt(temperaturedata[, c("timeofcapture", "temperature", "humidity")], id="timeofcapture")  # melt by date. 
+  df_melt <- melt(temperaturedata[, c("timeofcapture", "temperature","ftemperature", "humidity")], id="timeofcapture")  # melt by date. 
   gg <- ggplot(df_melt, aes(x=timeofcapture))  # setup
   gg + geom_line(aes(y=value, color=variable), size=1) + scale_color_discrete(name="Legend") 
+
+  
+  df_xts <- xts(x = temperaturedata$ftemperature, order.by = temperaturedata$timeofcapture)
+  dg <- dygraph(df_xts) %>%
+       dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = TRUE, colors="red") %>%
+       dyRangeSelector() %>%
+       dyCrosshair(direction = "vertical") %>%
+       dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+       dyRoller(rollPeriod = 1)
+  dg
