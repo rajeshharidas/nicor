@@ -25,6 +25,12 @@ if (!require(epiDisplay))
 if (!require(dygraphs))
   install.packages("dygraphs")
 
+if (!require(imputeMissings))
+  install.packages("imputeMissings")
+
+if (!require(rcompanion))
+  install.packages("rcompanion")
+
 library(tidyverse)
 library(caret)
 library(data.table)
@@ -40,6 +46,12 @@ library(reshape2)
 library(dygraphs)
 library(xts)
 library(htmlwidgets)
+library(imputeMissings)
+library(rcompanion)
+
+RMSE <- function(true_ratings, predicted_ratings){
+  sqrt(mean((true_ratings - predicted_ratings)^2))
+}
 
 dl <- tempfile()
 
@@ -157,6 +169,23 @@ sensordata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+dl6 <- tempfile()
+
+download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/noaadata.csv",
+              dl6)
+
+noaadata <- read_delim(
+  dl6,
+  delim = ",",
+  col_names = c("station","date","prcp","snow","snwd","tavg","tmax","tmin","tobs"),
+  na = c("", "NA"),
+  quoted_na = TRUE,
+  comment = "",
+  trim_ws = FALSE,
+  skip = 1,
+  progress = show_progress(),
+  skip_empty_rows = TRUE
+)
 
 sensordata <- sensordata %>% 
   mutate(timeofcapture=ymd_hms(str_c(date,time,sep=" ")),temperature=temp) %>% 
@@ -177,14 +206,25 @@ sensordata <- sensordata %>% mutate (ftemperature = (temperature * 1.8) + 32)
 nestdata <- nestdata %>% mutate (date=as.Date(timeofevent))
 
 nestreportdata <- nestdata %>% group_by (date) %>% 
-  summarize(heatingtimes=sum(traitvalue == 'HEATING'),coolingtimes=sum(traitvalue == 'COOLING'))
+  summarize(ontimes=mean(traitvalue == 'ON'),coolingtimes=mean(traitvalue == 'COOLING'),heatingtimes=mean(traitvalue == 'HEATING'))
+
+avgweather <- temperaturedata %>% group_by(date) %>% 
+  summarize(avgtemp=mean(ftemperature),avghumidity=mean(humidity))
 
 nestreportdata <- nestreportdata %>% left_join(avgweather,by="date")
 
 nestreportdata <- impute(data.frame(nestreportdata),flag=TRUE)
 
-avgweather <- temperaturedata %>% group_by(date) %>% 
-  summarize(avgtemp=mean(ftemperature),avghumidity=mean(humidity))
+noaadata <- noaadata %>% mutate(date = mdy(date))
+
+noaadata <- noaadata %>% group_by(date) %>% 
+  summarize(avgtmax=mean(tmax),avgtmin=mean(tmin)) %>% 
+  arrange(date)
+
+nestreportdata <- nestreportdata %>% left_join(noaadata,by="date")
+
+nestreportdata <- nestreportdata %>% 
+  mutate(avgtmax = ifelse(is.na(avgtmax),avgtemp,avgtmax), avgtmin= ifelse(is.na(avgtmin),avgtemp,avgtmin))
 
  tempplot <- temperaturedata %>% ggplot(aes(timeofcapture, temperature,col='red')) +
       geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
@@ -208,3 +248,55 @@ avgweather <- temperaturedata %>% group_by(date) %>%
  dg
   
  saveWidget(dg, file=paste0( getwd(), "/dygraphshum.html"))
+ 
+ set.seed(1996,sample.kind="Rounding")
+ winterreport <- nestreportdata %>% filter(ontimes > 0 & heatingtimes > 0)
+ 
+ test_index <- createDataPartition(winterreport$ontimes, times = 1, p = 0.3, list = FALSE)
+ 
+ train_set <- winterreport %>% slice(-test_index)
+ test_set <- winterreport %>% slice(test_index)
+ 
+ nestfitwinter <- lm(ontimes ~ avgtemp+avghumidity+avgtmax+avgtmin, data=train_set)
+ nestwinterpred <- predict(nestfitwinter,test_set)
+ RMSE(test_set$ontimes,nestwinterpred)
+ 
+ model.1 <- glm(heatingtimes ~ avgtmax, data=winterreport, family="Gamma")
+ model.2 <- glm(heatingtimes ~ avgtmin, data=winterreport, family="Gamma")
+ model.3 <- glm(heatingtimes ~ avgtemp, data=winterreport, family="Gamma")
+ model.4 <- glm(heatingtimes ~ avghumidity, data=winterreport, family="Gamma")
+ accuracy(list(model.1,model.2,model.3,model.4),plotit=TRUE, digits=3)
+ 
+ plotPredy(data  = winterreport,
+           x     = avgtmax,
+           y     = heatingtimes,
+           model = model.1,
+           xlab  = "avgtmax",
+           ylab  = "heatingtimes")
+ 
+ 
+ set.seed(1996,sample.kind="Rounding")
+ summerreport <- nestreportdata %>% filter(ontimes > 0 & coolingtimes > 0)
+ 
+ test_index <- createDataPartition(summerreport$ontimes, times = 1, p = 0.3, list = FALSE)
+ 
+ train_set <- summerreport %>% slice(-test_index)
+ test_set <- summerreport %>% slice(test_index)
+ 
+ nestfitsummer <- lm(ontimes ~ avgtemp+avghumidity+avgtmax+avgtmin, data=train_set)
+ nestsummerpred <- predict(nestfitsummer,test_set)
+ RMSE(test_set$ontimes,nestsummerpred)
+ 
+ model.1 <- glm(ontimes ~ avgtmax, data=summerreport, family="Gamma")
+ model.2 <- glm(ontimes ~ avgtmin, data=summerreport, family="Gamma")
+ model.3 <- glm(ontimes ~ avgtemp, data=summerreport, family="Gamma")
+ model.4 <- glm(ontimes ~ avghumidity, data=summerreport, family="Gamma")
+ accuracy(list(model.1,model.2,model.3,model.4),plotit=TRUE, digits=3)
+ 
+ plotPredy(data  = summerreport,
+           x     = avgtmax,
+           y     = ontimes,
+           model = model.1,
+           xlab  = "avgtmax",
+           ylab  = "ontimes")
+ 
