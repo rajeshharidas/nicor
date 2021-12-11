@@ -39,6 +39,7 @@ library(reshape2)
 
 library(dygraphs)
 library(xts)
+library(htmlwidgets)
 
 dl <- tempfile()
 
@@ -161,17 +162,29 @@ sensordata <- sensordata %>%
   mutate(timeofcapture=ymd_hms(str_c(date,time,sep=" ")),temperature=temp) %>% 
   filter (timeofcapture >= '2021-03-14 00:00:00') %>% 
   filter (!is.na(temperature) & !is.na(humidity)) %>%
-  dplyr::select (-temp,-date,-time) %>% 
-  dplyr::select(timeofcapture,temperature,humidity) %>%
+  dplyr::select (-temp,-time) %>% 
+  dplyr::select(timeofcapture,date,temperature,humidity) %>%
   arrange(timeofcapture)
 
 temperaturedata <- temperaturedata %>% 
   filter(!is.na(temperature) & !is.na(humidity)) %>%
-  dplyr::select (timeofcapture,temperature,humidity) %>%
+  mutate (date = as.Date(timeofcapture)) %>%
+  dplyr::select (timeofcapture,date,temperature,humidity) %>%
   arrange(timeofcapture)
 
 temperaturedata <- temperaturedata %>% mutate (ftemperature = (temperature * 1.8) + 32)
 sensordata <- sensordata %>% mutate (ftemperature = (temperature * 1.8) + 32)
+nestdata <- nestdata %>% mutate (date=as.Date(timeofevent))
+
+nestreportdata <- nestdata %>% group_by (date) %>% 
+  summarize(heatingtimes=sum(traitvalue == 'HEATING'),coolingtimes=sum(traitvalue == 'COOLING'))
+
+nestreportdata <- nestreportdata %>% left_join(avgweather,by="date")
+
+nestreportdata <- impute(data.frame(nestreportdata),flag=TRUE)
+
+avgweather <- temperaturedata %>% group_by(date) %>% 
+  summarize(avgtemp=mean(ftemperature),avghumidity=mean(humidity))
 
  tempplot <- temperaturedata %>% ggplot(aes(timeofcapture, temperature,col='red')) +
       geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
@@ -180,16 +193,18 @@ sensordata <- sensordata %>% mutate (ftemperature = (temperature * 1.8) + 32)
  grid.arrange(tempplot, humplot,  nrow=2)
  
  
-  df_melt <- melt(temperaturedata[, c("timeofcapture", "temperature","ftemperature", "humidity")], id="timeofcapture")  # melt by date. 
-  gg <- ggplot(df_melt, aes(x=timeofcapture))  # setup
-  gg + geom_line(aes(y=value, color=variable), size=1) + scale_color_discrete(name="Legend") 
+ df_melt <- melt(temperaturedata[, c("timeofcapture", "temperature","ftemperature", "humidity")], id="timeofcapture")  # melt by date. 
+ gg <- ggplot(df_melt, aes(x=timeofcapture))  # setup
+ gg + geom_line(aes(y=value, color=variable), size=1) + scale_color_discrete(name="Legend") 
 
   
-  df_xts <- xts(x = temperaturedata$ftemperature, order.by = temperaturedata$timeofcapture)
-  dg <- dygraph(df_xts) %>%
+ df_xts <- xts(x = temperaturedata$humidity, order.by = temperaturedata$timeofcapture)
+ dg <- dygraph(df_xts) %>%
        dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = TRUE, colors="red") %>%
        dyRangeSelector() %>%
        dyCrosshair(direction = "vertical") %>%
        dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
        dyRoller(rollPeriod = 1)
-  dg
+ dg
+  
+ saveWidget(dg, file=paste0( getwd(), "/dygraphshum.html"))
