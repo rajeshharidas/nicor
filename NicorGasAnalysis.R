@@ -49,10 +49,12 @@ library(htmlwidgets)
 library(imputeMissings)
 library(rcompanion)
 
+#RMSE function
 RMSE <- function(true_ratings, predicted_ratings){
   sqrt(mean((true_ratings - predicted_ratings)^2))
 }
 
+#Download the temperature data from google nest
 dl <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/temperaturedata.csv",
@@ -79,6 +81,7 @@ temperaturedata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Down load the real time nest event data for the periods (2018-2021)
 dl1 <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/nesteventdata.csv",
@@ -97,6 +100,7 @@ nestdata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Download the nicor gas usage data from nicor bill
 dl2 <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/nicorgasdata.csv",
@@ -115,6 +119,7 @@ nicorgasusage <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Download the nicor gas bill data from nicor bill
 dl3 <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/nicorinvdata.csv",
@@ -133,6 +138,7 @@ nicorinvdata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Download the electric reading data from city of naperville
 dl4 <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/electricdata.csv",
@@ -151,6 +157,7 @@ electricdata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Download the latest sensor data from google takeout. This has data from March 2021 - Dec 2021
 dl5 <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/SensorData.csv",
@@ -169,6 +176,7 @@ sensordata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Download the weather data for 2018-2021
 dl6 <- tempfile()
 
 download.file("https://raw.githubusercontent.com/rajeshharidas/nicor/main/noaadata.csv",
@@ -187,6 +195,7 @@ noaadata <- read_delim(
   skip_empty_rows = TRUE
 )
 
+#Data after March 2021 - Does not include nest real-time heating/cooling events
 sensordata <- sensordata %>% 
   mutate(timeofcapture=ymd_hms(str_c(date,time,sep=" ")),temperature=temp) %>% 
   filter (timeofcapture >= '2021-03-14 00:00:00') %>% 
@@ -195,49 +204,63 @@ sensordata <- sensordata %>%
   dplyr::select(timeofcapture,date,temperature,humidity) %>%
   arrange(timeofcapture)
 
+#Remove NAs from temperature data. 
+#get the date for comparisons
+#select only 4 properties and arrange in ascending order of time-series
 temperaturedata <- temperaturedata %>% 
   filter(!is.na(temperature) & !is.na(humidity)) %>%
   mutate (date = as.Date(timeofcapture)) %>%
   dplyr::select (timeofcapture,date,temperature,humidity) %>%
   arrange(timeofcapture)
 
+#add Fahrenheit data as the original data is captured in Celsius
 temperaturedata <- temperaturedata %>% mutate (ftemperature = (temperature * 1.8) + 32)
 sensordata <- sensordata %>% mutate (ftemperature = (temperature * 1.8) + 32)
+#add date to the nest event data for comparison
 nestdata <- nestdata %>% mutate (date=as.Date(timeofevent))
 
+#summarize the number of times the furnace or the A/C went 'ON' during the heating vs cooling periods
 nestreportdata <- nestdata %>% group_by (date) %>% 
   summarize(ontimes=mean(traitvalue == 'ON'),coolingtimes=mean(traitvalue == 'COOLING'),heatingtimes=mean(traitvalue == 'HEATING'))
 
+#summarize the average temps and humidity for the period for which we have nest real-time data
 avgweather <- temperaturedata %>% group_by(date) %>% 
   summarize(avgtemp=mean(ftemperature),avghumidity=mean(humidity))
 
+#join temp data with real-time event data keeping only rows for which we have real time events
 nestreportdata <- nestreportdata %>% left_join(avgweather,by="date")
 
+#impute missing values for the temp and humidity using median/mean
 nestreportdata <- impute(data.frame(nestreportdata),flag=TRUE)
 
+#convert the date format in the NOAA weather data
 noaadata <- noaadata %>% mutate(date = mdy(date))
 
+#calculate the mean temps for the each date and sort in ascending order of time-series
 noaadata <- noaadata %>% group_by(date) %>% 
   summarize(avgtmax=mean(tmax),avgtmin=mean(tmin)) %>% 
   arrange(date)
 
+#left join the weather center data with nest even data to get the on times, thermostat temps and weather temps outside
 nestreportdata <- nestreportdata %>% left_join(noaadata,by="date")
 
+#if the weather data is missing impute them with average temps. could introduce error
 nestreportdata <- nestreportdata %>% 
   mutate(avgtmax = ifelse(is.na(avgtmax),avgtemp,avgtmax), avgtmin= ifelse(is.na(avgtmin),avgtemp,avgtmin))
 
+#do a combined plot for the temps and humidity
  tempplot <- temperaturedata %>% ggplot(aes(timeofcapture, temperature,col='red')) +
       geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
  humplot <- temperaturedata %>% ggplot(aes(timeofcapture, humidity,col='blue')) +
        geom_line() + scale_y_continuous(trans = "log2") + scale_x_continuous()
  grid.arrange(tempplot, humplot,  nrow=2)
  
- 
+ #do a melt plot for the Celsius, Fahrenheit, and humidity
  df_melt <- melt(temperaturedata[, c("timeofcapture", "temperature","ftemperature", "humidity")], id="timeofcapture")  # melt by date. 
  gg <- ggplot(df_melt, aes(x=timeofcapture))  # setup
  gg + geom_line(aes(y=value, color=variable), size=1) + scale_color_discrete(name="Legend") 
 
-  
+ #plot a dynamic interactive graph for temps and humidity (change this for different plots) 
  df_xts <- xts(x = temperaturedata$humidity, order.by = temperaturedata$timeofcapture)
  dg <- dygraph(df_xts) %>%
        dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = TRUE, colors="red") %>%
@@ -246,26 +269,40 @@ nestreportdata <- nestreportdata %>%
        dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
        dyRoller(rollPeriod = 1)
  dg
-  
+ 
+ #save the plot as html  
  saveWidget(dg, file=paste0( getwd(), "/dygraphshum.html"))
  
+ #Objective of the below exercise is to predict the number of times the furnace or a/c turns on during winter vs other seasons
+
+ #set seed so the results are repeatable 
  set.seed(1996,sample.kind="Rounding")
+ 
+ #get winter specific data  from the nest data. For our exercise winter data is when heating and on times coincide.
+ #some times heating is on during fall weather or early spring when temps are still low outside
  winterreport <- nestreportdata %>% filter(ontimes > 0 & heatingtimes > 0)
  
+ #create a 70/30 train/test set split
  test_index <- createDataPartition(winterreport$ontimes, times = 1, p = 0.3, list = FALSE)
  
  train_set <- winterreport %>% slice(-test_index)
  test_set <- winterreport %>% slice(test_index)
  
- nestfitwinter <- lm(ontimes ~ avgtemp+avghumidity+avgtmax+avgtmin, data=train_set)
+ #perfom a linear regression predicting on times from thermostat data and weather data
+ nestfitwinter <- glm(ontimes ~ avgtemp+avghumidity+avgtmax+avgtmin, data=train_set)
+ #predict using the test set
  nestwinterpred <- predict(nestfitwinter,test_set)
- RMSE(test_set$ontimes,nestwinterpred)
+ #calculate the RMSE for the winter prediction
+ winterRMSE <- RMSE(test_set$ontimes,nestwinterpred)
+ winterRMSE
  
+ #Predict and plot the heating times against the outside weather and inside home nest settings
  model.1 <- glm(heatingtimes ~ avgtmax, data=winterreport, family="Gamma")
  model.2 <- glm(heatingtimes ~ avgtmin, data=winterreport, family="Gamma")
  model.3 <- glm(heatingtimes ~ avgtemp, data=winterreport, family="Gamma")
  model.4 <- glm(heatingtimes ~ avghumidity, data=winterreport, family="Gamma")
- accuracy(list(model.1,model.2,model.3,model.4),plotit=TRUE, digits=3)
+ winterAccuracy <- accuracy(list(model.1,model.2,model.3,model.4),plotit=TRUE, digits=3)
+ winterAccuracy
  
  plotPredy(data  = winterreport,
            x     = avgtmax,
@@ -274,24 +311,34 @@ nestreportdata <- nestreportdata %>%
            xlab  = "avgtmax",
            ylab  = "heatingtimes")
  
- 
+ #set seed so the results are repeatable 
  set.seed(1996,sample.kind="Rounding")
+ 
+ #get non-winter specific data  from the nest data. For our exercise non-winter data is when cooling and on times coincide.
+ #some times cooling is on during fall weather when temps are still hot/humid outside - very low occurence
  summerreport <- nestreportdata %>% filter(ontimes > 0 & coolingtimes > 0)
  
+ #create a 70/30 train/test set split
  test_index <- createDataPartition(summerreport$ontimes, times = 1, p = 0.3, list = FALSE)
  
  train_set <- summerreport %>% slice(-test_index)
  test_set <- summerreport %>% slice(test_index)
  
- nestfitsummer <- lm(ontimes ~ avgtemp+avghumidity+avgtmax+avgtmin, data=train_set)
+ #perfom a linear regression predicting on times from thermostat data and weather data
+ nestfitsummer <- glm(ontimes ~ avgtemp+avghumidity+avgtmax+avgtmin, data=train_set)
+ #predict using the test set
  nestsummerpred <- predict(nestfitsummer,test_set)
- RMSE(test_set$ontimes,nestsummerpred)
+ #calculate the RMSE for the non-winter prediction
+ summerRMSE <- RMSE(test_set$ontimes,nestsummerpred)
+ summerRMSE
  
+ #Predict and plot the on times against the outside weather and inside home nest settings
  model.1 <- glm(ontimes ~ avgtmax, data=summerreport, family="Gamma")
  model.2 <- glm(ontimes ~ avgtmin, data=summerreport, family="Gamma")
  model.3 <- glm(ontimes ~ avgtemp, data=summerreport, family="Gamma")
  model.4 <- glm(ontimes ~ avghumidity, data=summerreport, family="Gamma")
- accuracy(list(model.1,model.2,model.3,model.4),plotit=TRUE, digits=3)
+ summerAccuracy <- accuracy(list(model.1,model.2,model.3,model.4),plotit=TRUE, digits=3)
+ summerAccuracy
  
  plotPredy(data  = summerreport,
            x     = avgtmax,
@@ -300,3 +347,43 @@ nestreportdata <- nestreportdata %>%
            xlab  = "avgtmax",
            ylab  = "ontimes")
  
+ 
+ #The objective of the following exercise is to predict the optimal thermostat settings based on bill data during
+ #winter and non-winter usage periods
+ 
+ nicorgasusage <- nicorgasusage %>% mutate(date=readingdate)
+ nicorinvdata <- nicorinvdata %>% mutate(date=billdate)
+ 
+ nicorbill <- nicorgasusage %>% left_join(nicorinvdata,by="date") %>% arrange(date)
+ nicorbill <- nicorbill %>% mutate(month=month(date),year=year(date),monthyear=ifelse(month == 1,str_c(12,year-1),str_c(month-1,year)))
+ 
+ usagewithweather <- temperaturedata %>% 
+   left_join(noaadata,by="date") %>% 
+   mutate(monthyear=str_c(month(date),year(date)),year=year(date),month=month(date)) %>% 
+   group_by(monthyear) %>%
+   summarize(myavgtemp=mean(ftemperature),myavghumidity=mean(humidity),myavgtmax=mean(avgtmax),myavgtmin=mean(avgtmin)) %>% 
+   arrange(monthyear)
+ 
+ usagewithweather <- impute(data.frame(usagewithweather),flag=TRUE)
+ 
+ nicorbillanalysis <- nicorbill %>% left_join(usagewithweather,by="monthyear") %>% filter(date < '2021-03-31')
+ 
+ #create a 70/30 train/test set split
+ test_index <- createDataPartition(nicorbillanalysis$myavgtemp, times = 1, p = 0.3, list = FALSE)
+ 
+ train_set <- nicorbillanalysis %>% slice(-test_index)
+ test_set <- nicorbillanalysis %>% slice(test_index)
+ 
+ estimatednestsetting <- glm(myavgtemp ~ myavgtmax+myavgtmin+myavghumidity+daysused+currentcharges, data=train_set)
+ estimatednestsettingpred <- predict(estimatednestsetting,test_set)
+ nestRMSE <- RMSE(test_set$myavgtemp,estimatednestsettingpred)
+ nestRMSE
+ 
+ n.model.1 <- glm(myavgtemp ~ myavgtmax, data=nicorbillanalysis, family="Gamma")
+ n.model.2 <- glm(myavgtemp ~ myavgtmin, data=nicorbillanalysis, family="Gamma")
+ n.model.3 <- glm(myavgtemp ~ myavghumidity, data=nicorbillanalysis, family="Gamma")
+ n.model.4 <- glm(myavgtemp ~ daysused, data=nicorbillanalysis, family="Gamma")
+ n.model.5 <- glm(myavgtemp ~ currentcharges, data=nicorbillanalysis, family="Gamma")
+ 
+ nestAccuracy <- accuracy(list(n.model.1,n.model.2,n.model.3,n.model.4,n.model.5),plotit=TRUE, digits=3)
+ nestAccuracy
