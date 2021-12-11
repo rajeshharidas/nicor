@@ -417,7 +417,7 @@ nestreportdata <- nestreportdata %>%
  nestRMSE2 <- RMSE(nicorbillanalysis2$myavgtemp,estimatednestsettingpred2)
  nestRMSE2
  
-
+#plot the predictions for the second set
  n.model.1 <- glm(myavgtemp ~ myavgtmax, data=nicorbillanalysis2, family="Gamma")
  n.model.2 <- glm(myavgtemp ~ myavgtmin, data=nicorbillanalysis2, family="Gamma")
  n.model.3 <- glm(myavgtemp ~ myavghumidity, data=nicorbillanalysis2, family="Gamma")
