@@ -351,12 +351,16 @@ nestreportdata <- nestreportdata %>%
  #The objective of the following exercise is to predict the optimal thermostat settings based on bill data during
  #winter and non-winter usage periods
  
+ #make date a common field
  nicorgasusage <- nicorgasusage %>% mutate(date=readingdate)
  nicorinvdata <- nicorinvdata %>% mutate(date=billdate)
  
+ #join invoice and usage data
  nicorbill <- nicorgasusage %>% left_join(nicorinvdata,by="date") %>% arrange(date)
+ #bills are for the previous 28-32 days. Add a label monthyear for that
  nicorbill <- nicorbill %>% mutate(month=month(date),year=year(date),monthyear=ifelse(month == 1,str_c(12,year-1),str_c(month-1,year)))
  
+ #join temperature data with weather data and take and average of the data by monthyear label
  usagewithweather <- temperaturedata %>% 
    left_join(noaadata,by="date") %>% 
    mutate(monthyear=str_c(month(date),year(date)),year=year(date),month=month(date)) %>% 
@@ -364,8 +368,10 @@ nestreportdata <- nestreportdata %>%
    summarize(myavgtemp=mean(ftemperature),myavghumidity=mean(humidity),myavgtmax=mean(avgtmax),myavgtmin=mean(avgtmin)) %>% 
    arrange(monthyear)
  
+ #impute any missing weather data
  usagewithweather <- impute(data.frame(usagewithweather),flag=TRUE)
  
+ #temperature data has only data till end of march
  nicorbillanalysis <- nicorbill %>% left_join(usagewithweather,by="monthyear") %>% filter(date < '2021-03-31')
  
  #create a 70/30 train/test set split
@@ -374,16 +380,49 @@ nestreportdata <- nestreportdata %>%
  train_set <- nicorbillanalysis %>% slice(-test_index)
  test_set <- nicorbillanalysis %>% slice(test_index)
  
+ #run the glm model to compute the avg temp setting on thermostat for the weather
  estimatednestsetting <- glm(myavgtemp ~ myavgtmax+myavgtmin+myavghumidity+daysused+currentcharges, data=train_set)
+ #predict the avg temp setting using test set
  estimatednestsettingpred <- predict(estimatednestsetting,test_set)
+ #compute the RMSE
  nestRMSE <- RMSE(test_set$myavgtemp,estimatednestsettingpred)
  nestRMSE
  
+ #compute the models for different features
  n.model.1 <- glm(myavgtemp ~ myavgtmax, data=nicorbillanalysis, family="Gamma")
  n.model.2 <- glm(myavgtemp ~ myavgtmin, data=nicorbillanalysis, family="Gamma")
  n.model.3 <- glm(myavgtemp ~ myavghumidity, data=nicorbillanalysis, family="Gamma")
  n.model.4 <- glm(myavgtemp ~ daysused, data=nicorbillanalysis, family="Gamma")
  n.model.5 <- glm(myavgtemp ~ currentcharges, data=nicorbillanalysis, family="Gamma")
- 
+ #compare the accuracy and RMSE
  nestAccuracy <- accuracy(list(n.model.1,n.model.2,n.model.3,n.model.4,n.model.5),plotit=TRUE, digits=3)
  nestAccuracy
+ 
+ #test the model with the new dataset for 03/2021 - 11/2021 data
+ #join temperature data with weather data and take and average of the data by monthyear label
+ usagewithweather2 <- sensordata %>%
+   left_join(noaadata,by="date") %>% filter(date > '2021-03-15')  %>%
+   mutate(monthyear=str_c(month(date),year(date)),year=year(date),month=month(date)) %>% 
+   group_by(monthyear) %>%
+   summarize(myavgtemp=mean(ftemperature),myavghumidity=mean(humidity),myavgtmax=mean(avgtmax),myavgtmin=mean(avgtmin)) %>% 
+   arrange(monthyear)
+ 
+ #impute any missing weather data
+ usagewithweather2 <- impute(data.frame(usagewithweather2),flag=TRUE)
+ 
+ #temperature data has only data till end of march
+ nicorbillanalysis2 <- nicorbill %>% left_join(usagewithweather2,by="monthyear") %>% filter(date > '2021-03-31')
+ 
+ estimatednestsettingpred2 <- predict(estimatednestsetting,nicorbillanalysis2)
+ nestRMSE2 <- RMSE(nicorbillanalysis2$myavgtemp,estimatednestsettingpred2)
+ nestRMSE2
+ 
+
+ n.model.1 <- glm(myavgtemp ~ myavgtmax, data=nicorbillanalysis2, family="Gamma")
+ n.model.2 <- glm(myavgtemp ~ myavgtmin, data=nicorbillanalysis2, family="Gamma")
+ n.model.3 <- glm(myavgtemp ~ myavghumidity, data=nicorbillanalysis2, family="Gamma")
+ n.model.4 <- glm(myavgtemp ~ daysused, data=nicorbillanalysis2, family="Gamma")
+ n.model.5 <- glm(myavgtemp ~ currentcharges, data=nicorbillanalysis2, family="Gamma")
+ #compare the accuracy and RMSE
+ nestAccuracy2 <- accuracy(list(n.model.1,n.model.2,n.model.3,n.model.4,n.model.5),plotit=TRUE, digits=3)
+ nestAccuracy2
