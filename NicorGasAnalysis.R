@@ -436,3 +436,7 @@ nestreportdata <- nestreportdata %>%
  
  tempdifffit <- glm(avgtemp ~ tempdiff,family="Gamma",data=tempdiffanalysis)
  accuracy(list(tempdifffit),plotit=TRUE, digits=3)
+ 
+ tdiffpred <- predict(tempdifffit,tempdiffanalysis)
+ tdiffRMSE<- RMSE(tempdiffanalysis$avgtemp,tdiffpred)
+ tdiffRMSE
