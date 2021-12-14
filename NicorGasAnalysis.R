@@ -31,6 +31,11 @@ if (!require(imputeMissings))
 if (!require(rcompanion))
   install.packages("rcompanion")
 
+install.packages("xgboost")
+
+
+install.packages("DiagrammeR")
+
 library(tidyverse)
 library(caret)
 library(data.table)
@@ -48,6 +53,11 @@ library(xts)
 library(htmlwidgets)
 library(imputeMissings)
 library(rcompanion)
+
+library(xgboost)
+library(methods)
+
+library(DiagrammeR)
 
 #RMSE function
 RMSE <- function(true_ratings, predicted_ratings){
@@ -446,18 +456,61 @@ nestreportdata <- nestreportdata %>%
  tdiffRMSE<- RMSE(tempdiffanalysis$avgtemp,tdiffpred)
  tdiffRMSE
  
- install.packages("xgboost")
- library(xgboost)
- library(methods)
- xgtrain <- train_set[,c('heatingtimes','coolingtimes','avghumidity','avgtmax','avgtmin','daysused','meterreading','ccfs','currentcharges','naturalgascost','tempdiff')]
+
+ set.seed(1996,sample.kind="Rounding")
+ xgtrain <- train_set[,c('heatingtimes','avghumidity','avgtmax','avgtmin','daysused','meterreading','ccfs','currentcharges','naturalgascost','tempdiff')]
  xglabel <- train_set[,c('avgtemp')]
- xgbst <- xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = 2, eta = 1, nrounds = 2,nthread = 2)
+ xgbst <- xgboost::xgb.cv(data = as.matrix(xgtrain), label = xglabel, max_depth = 6, eta = 0.25,nfold=5, nrounds = 1000, early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
  
  xgtest <- test_set[,c('heatingtimes','coolingtimes','avghumidity','avgtmax','avgtmin','daysused','meterreading','ccfs','currentcharges','naturalgascost','tempdiff')]
  xglbltest <- as.matrix(test_set[,c('avgtemp')])
  
+ set.seed(1996,sample.kind="Rounding")
  xgpred <- predict(xgbst, xglbltest)
  imp_matrix <- xgboost::xgb.importance(feature_names = colnames(xgtrain), model = xgbst)
  imp_matrix
  
  print(xgboost::xgb.plot.importance(importance_matrix = imp_matrix))
+ xgbst <- xgboost::xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = 6, eta = 0.25, nrounds = 1000, early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
+ 
+ xgboost::xgb.plot.tree(model = xgbst, trees = 0:2)
+ 
+ 
+ 
+ #################
+ #grid search
+ #create hyperparameter grid
+ hyper_grid <- expand.grid(max_depth = seq(3, 6, 1),
+                           eta = seq(.2, .35, .01))
+ xgb_train_rmse <- NULL
+ xgb_test_rmse <- NULL
+ 
+ for (j in 1:nrow(hyper_grid)) {
+   set.seed(123)
+   m_xgb_untuned <- xgboost::xgb.cv(
+     data = as.matrix(xgtrain),
+     label = xglabel,
+     nrounds = 1000,
+     objective = "reg:squarederror",
+     early_stopping_rounds = 3,
+     nfold = 5,
+     max_depth = hyper_grid$max_depth[j],
+     eta = hyper_grid$eta[j]
+   )
+   
+   xgb_train_rmse[j] <- m_xgb_untuned$evaluation_log$train_rmse_mean[m_xgb_untuned$best_iteration]
+   xgb_test_rmse[j] <- m_xgb_untuned$evaluation_log$test_rmse_mean[m_xgb_untuned$best_iteration]
+   
+   cat(j, "\n")
+ }
+ 
+ #ideal hyperparamters
+ tuningparams <- hyper_grid[which.min(xgb_test_rmse), ]
+ tuningparams
+ xgbst <- xgboost::xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = tuningparams$max_depth, eta = tuningparams$eta, nrounds = 1000, early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
+ 
+ set.seed(1996,sample.kind="Rounding")
+ xgpred <- predict(xgbst, xglbltest)
+ imp_matrix <- xgboost::xgb.importance(feature_names = colnames(xgtrain), model = xgbst)
+ imp_matrix
+ 
