@@ -434,9 +434,30 @@ nestreportdata <- nestreportdata %>%
  tempdiffanalysis <- tempdiffanalysis %>% mutate(tempdiff=avgtmax-avgtmin)
  tempdiffanalysis <- tempdiffanalysis %>% mutate(tempdiff = ifelse (tempdiff < 0,-tempdiff,tempdiff))
  
+ test_index <- createDataPartition(tempdiffanalysis$avgtemp, times = 1, p = 0.3, list = FALSE)
+ 
+ train_set <- tempdiffanalysis[-test_index, ]
+ test_set <-  tempdiffanalysis[test_index, ]
+ 
  tempdifffit <- glm(avgtemp ~ tempdiff,family="Gamma",data=tempdiffanalysis)
  accuracy(list(tempdifffit),plotit=TRUE, digits=3)
  
  tdiffpred <- predict(tempdifffit,tempdiffanalysis)
  tdiffRMSE<- RMSE(tempdiffanalysis$avgtemp,tdiffpred)
  tdiffRMSE
+ 
+ install.packages("xgboost")
+ library(xgboost)
+ library(methods)
+ xgtrain <- train_set[,c('heatingtimes','coolingtimes','avghumidity','avgtmax','avgtmin','daysused','meterreading','ccfs','currentcharges','naturalgascost','tempdiff')]
+ xglabel <- train_set[,c('avgtemp')]
+ xgbst <- xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = 2, eta = 1, nrounds = 2,nthread = 2)
+ 
+ xgtest <- test_set[,c('heatingtimes','coolingtimes','avghumidity','avgtmax','avgtmin','daysused','meterreading','ccfs','currentcharges','naturalgascost','tempdiff')]
+ xglbltest <- as.matrix(test_set[,c('avgtemp')])
+ 
+ xgpred <- predict(xgbst, xglbltest)
+ imp_matrix <- xgboost::xgb.importance(feature_names = colnames(xgtrain), model = xgbst)
+ imp_matrix
+ 
+ print(xgboost::xgb.plot.importance(importance_matrix = imp_matrix))
