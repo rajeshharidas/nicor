@@ -507,10 +507,16 @@ nestreportdata <- nestreportdata %>%
  #ideal hyperparamters
  tuningparams <- hyper_grid[which.min(xgb_test_rmse), ]
  tuningparams
- xgbst <- xgboost::xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = tuningparams$max_depth, eta = tuningparams$eta, nrounds = 1000, early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
  
  set.seed(1996,sample.kind="Rounding")
+ 
+ xgbst <- xgboost::xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = tuningparams$max_depth, eta = tuningparams$eta, nrounds = 1000, early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
+ 
  xgpred <- predict(xgbst, xglbltest)
  imp_matrix <- xgboost::xgb.importance(feature_names = colnames(xgtrain), model = xgbst)
  imp_matrix
+ 
+ print(xgboost::xgb.plot.importance(importance_matrix = imp_matrix))
+ xgboost::xgb.plot.tree(model = xgbst, trees = 0:2)
+ 
  
