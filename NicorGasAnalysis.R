@@ -381,7 +381,7 @@ nestreportdata <- nestreportdata %>%
  test_set <- nicorbillanalysis %>% slice(test_index)
  
  #run the glm model to compute the avg temp setting on thermostat for the weather
- estimatednestsetting <- glm(myavgtemp ~ myavgtmax+myavgtmin+myavghumidity+daysused+currentcharges, data=train_set)
+ estimatednestsetting <- glm(myavgtemp ~ myavgtmax+myavgtmin+myavghumidity+daysused+currentcharges+ccfs, data=train_set)
  #predict the avg temp setting using test set
  estimatednestsettingpred <- predict(estimatednestsetting,test_set)
  #compute the RMSE
@@ -394,8 +394,9 @@ nestreportdata <- nestreportdata %>%
  n.model.3 <- glm(myavgtemp ~ myavghumidity, data=nicorbillanalysis, family="Gamma")
  n.model.4 <- glm(myavgtemp ~ daysused, data=nicorbillanalysis, family="Gamma")
  n.model.5 <- glm(myavgtemp ~ currentcharges, data=nicorbillanalysis, family="Gamma")
+ n.model.6 <- glm(myavgtemp ~ ccfs, data=nicorbillanalysis, family="Gamma")
  #compare the accuracy and RMSE
- nestAccuracy <- accuracy(list(n.model.1,n.model.2,n.model.3,n.model.4,n.model.5),plotit=TRUE, digits=3)
+ nestAccuracy <- accuracy(list(n.model.1,n.model.2,n.model.3,n.model.4,n.model.5,n.model.6),plotit=TRUE, digits=3)
  nestAccuracy
  
  #test the model with the new dataset for 03/2021 - 11/2021 data
@@ -426,3 +427,12 @@ nestreportdata <- nestreportdata %>%
  #compare the accuracy and RMSE
  nestAccuracy2 <- accuracy(list(n.model.1,n.model.2,n.model.3,n.model.4,n.model.5),plotit=TRUE, digits=3)
  nestAccuracy2
+ 
+ #Temperature diff test
+ tempdiffanalysis <- nestreportdata %>% left_join(nicorbill,by="monthyear") 
+ tempdiffanalysis <- tempdiffanalysis %>% filter(!is.na(readingdate))
+ tempdiffanalysis <- tempdiffanalysis %>% mutate(tempdiff=avgtmax-avgtmin)
+ tempdiffanalysis <- tempdiffanalysis %>% mutate(tempdiff = ifelse (tempdiff < 0,-tempdiff,tempdiff))
+ 
+ tempdifffit <- glm(avgtemp ~ tempdiff,family="Gamma",data=tempdiffanalysis)
+ accuracy(list(tempdifffit),plotit=TRUE, digits=3)
