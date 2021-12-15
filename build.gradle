@@ -1,3 +1,15 @@
+buildscript {
+    ext {
+        springBootVersion = '2.6.1.RELEASE'
+    }
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+    }
+}
+
 plugins {
 	id 'org.springframework.boot' version '2.6.1'
 	id 'io.spring.dependency-management' version '1.0.11.RELEASE'
@@ -9,14 +21,67 @@ version = '0.0.1-SNAPSHOT'
 sourceCompatibility = '1.8'
 
 repositories {
+	flatDir { dirs "lib" }
 	mavenCentral()
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	compile("org.springframework.boot:spring-boot-devtools")
+    compile 'org.springframework.boot:spring-boot-starter-web'
+    compile("org.springframework.boot:spring-boot-starter-security")
+    compileOnly 'org.projectlombok:lombok'
+    compile name: 'h2o-genmodel'
+    compile("io.springfox:springfox-swagger2:2.8.0")
+    compile("io.springfox:springfox-swagger-ui:2.8.0")
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
 test {
 	useJUnitPlatform()
 }
+
+//-------------------------------------------------------------------
+// Custom tasks for generating the model POJOs
+//-------------------------------------------------------------------
+
+task deleteTmp(type: Delete) {
+    delete "tmp"
+}
+
+task runScript(type: Exec, dependsOn: deleteTmp) {
+    if (project.hasProperty("pythonBasedMLModel") && project.pythonBasedMLModel == "true") {
+       
+    } else {
+        commandLine "R", "-f", "NicorGasAnalysis.R"
+    }
+}
+
+task placeGenModelJar(type: Copy, dependsOn: runScript) {
+    from "tmp/h2o-genmodel.jar"
+    into "lib"
+}
+
+
+task(placeAvgTempSettingModel, dependsOn: placeGenModelJar) << {
+    String fileContents = new File("tmp/AvgTempSettingModel.java").text
+    File outf = new File ("src/main/java/com/rh/ai/utilities/nicor/model/AvgTempSettingModel.java")
+    outf.write("package org.gradle;\n" + "\n" + fileContents)
+}
+
+task(generateModels, dependsOn: [placeAvgTempSettingModel]) << {
+}
+
+compileJava.dependsOn generateModels
+
+
+//-------------------------------------------------------------------
+// Custom task for cleaning up generated files
+//-------------------------------------------------------------------
+
+task cleanGenerated(type: Delete) {
+    delete "tmp",
+            "lib/h2o-genmodel.jar",
+            "src/main/java/com/rh/ai/utilities/nicor/model/AvgTempSettingModel.java"
+}
+
+clean.dependsOn cleanGenerated
