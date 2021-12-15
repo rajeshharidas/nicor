@@ -1,0 +1,28 @@
+{
+	"info": {
+		"_postman_id": "ee9825e2-af65-466c-bb2d-c34bede54c63",
+		"name": "NicorGasAnalysisApi",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "predictAvgTempSettings",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:54321/",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "54321",
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
