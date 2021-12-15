@@ -510,7 +510,7 @@ nestreportdata <- nestreportdata %>%
  
  set.seed(1996,sample.kind="Rounding")
  
- xgbst <- xgboost::xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = tuningparams$max_depth, eta = tuningparams$eta, nrounds = 1000, early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
+ xgbst <- xgboost::xgboost(data = as.matrix(xgtrain), label = xglabel, max_depth = tuningparams$max_depth, eta = tuningparams$eta,verbosity = 1, nrounds = 1000,  metric="error" ,early_stopping_rounds = 3,nthread = 2,objective='reg:squarederror')
  
  xgpred <- predict(xgbst, xglbltest)
  imp_matrix <- xgboost::xgb.importance(feature_names = colnames(xgtrain), model = xgbst)
@@ -519,4 +519,13 @@ nestreportdata <- nestreportdata %>%
  print(xgboost::xgb.plot.importance(importance_matrix = imp_matrix))
  xgboost::xgb.plot.tree(model = xgbst, trees = 0:2)
  
- 
+tunedRMSE<- RMSE(xglbltest,xgpred)
+tunedRMSE
+
+install.packages("h2o")
+library(datasets)
+library(h2o)
+h2o.init()
+tempdiffanalysis.hex = as.h2o(tempdiffanalysis)
+h2o.ls()
+
