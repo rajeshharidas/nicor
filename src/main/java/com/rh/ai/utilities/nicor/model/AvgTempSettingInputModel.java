@@ -15,12 +15,13 @@ public class AvgTempSettingInputModel implements Serializable {
 	private Double avgtmax = 0.0;
 	private Double avgtmin = 0.0;
 	private Double avghumidity = 0.0;
-	private int daysused = 0;
-	private int meterreading = 0;
-	private int ccfs = 0;
+	private Double daysused = 0.0;
+	private Double meterreading = 0.0;
+	private Double ccfs = 0.0;
 	private Double currentcharges = 0.0;
 	private Double naturalgascost = 0.0;
 	private Double tempdiff = 0.0;
+
 	public Double getHeatingtimes() {
 		return heatingtimes;
 	}
@@ -45,22 +46,22 @@ public class AvgTempSettingInputModel implements Serializable {
 	public void setAvghumidity(Double avghumidity) {
 		this.avghumidity = avghumidity;
 	}
-	public int getDaysused() {
+	public Double getDaysused() {
 		return daysused;
 	}
-	public void setDaysused(int daysused) {
+	public void setDaysused(Double daysused) {
 		this.daysused = daysused;
 	}
-	public int getMeterreading() {
+	public Double getMeterreading() {
 		return meterreading;
 	}
-	public void setMeterreading(int meterreading) {
+	public void setMeterreading(Double meterreading) {
 		this.meterreading = meterreading;
 	}
-	public int getCcfs() {
+	public Double getCcfs() {
 		return ccfs;
 	}
-	public void setCcfs(int ccfs) {
+	public void setCcfs(Double ccfs) {
 		this.ccfs = ccfs;
 	}
 	public Double getCurrentcharges() {
