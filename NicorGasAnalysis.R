@@ -529,3 +529,18 @@ h2o.init()
 tempdiffanalysis.hex = as.h2o(tempdiffanalysis)
 h2o.ls()
 
+myX <- c('heatingtimes','avghumidity','avgtmax','avgtmin','daysused','meterreading','ccfs','currentcharges','naturalgascost','tempdiff')
+myY <- 'avgtemp'
+
+rand  <- h2o.runif(tempdiffanalysis.hex, seed = 1234567)
+train <- tempdiffanalysis.hex[rand$rnd <= 0.8, ]
+valid <- tempdiffanalysis.hex[rand$rnd > 0.8, ]
+model <- h2o.gbm(x = myX, y = myY,
+                 training_frame = train, validation_frame = valid,
+                 score_each_iteration = T, 
+                 ntrees = 100, max_depth = 5, learn_rate = 0.05,
+                 model_id = "nicoranalysis")
+print(model)
+
+h2o.download_mojo(model, path = ".",get_genmodel_jar=TRUE)
+
