@@ -537,10 +537,125 @@ train <- tempdiffanalysis.hex[rand$rnd <= 0.8, ]
 valid <- tempdiffanalysis.hex[rand$rnd > 0.8, ]
 model <- h2o.gbm(x = myX, y = myY,
                  training_frame = train, validation_frame = valid,
-                 score_each_iteration = T, 
-                 ntrees = 100, max_depth = 5, learn_rate = 0.05,
-                 model_id = "nicoranalysis")
+                 score_each_iteration = T, nfold=5,keep_cross_validation_predictions = TRUE,
+                 ntrees = 100, max_depth = 5, learn_rate = 0.5,
+                 model_id = "nicoranalysis",seed = 1996)
 print(model)
 
 h2o.download_mojo(model, path = ".",get_genmodel_jar=TRUE)
 
+m2 <- h2o.deeplearning(
+  model_id="dl_model_faster", 
+  training_frame=train, 
+  validation_frame=valid,
+  x=myX,
+  y=myY,
+  hidden=c(32,32,32),                  ## small network, runs faster
+  epochs=1000000,                      ## hopefully converges earlier...
+  score_validation_samples=10000,      ## sample the validation dataset (faster)
+  stopping_rounds=2,
+  stopping_metric="MSE", ## could be "MSE","logloss","r2"
+  stopping_tolerance=0.01
+)
+summary(m2)
+plot(m2)
+
+h2o.performance(m2, train=T)
+
+max_epochs <- 12 ## Add two more epochs
+m_cont <- h2o.deeplearning(
+  model_id="dl_model_tuned_continued", 
+  training_frame=train, 
+  validation_frame=valid, 
+  x=myX,
+  y=myY, 
+  hidden=c(128,128,128),          ## more hidden layers -> more complex interactions
+  epochs=max_epochs,              ## hopefully long enough to converge (otherwise restart again)
+  stopping_metric="MSE",      ## logloss is directly optimized by Deep Learning
+  stopping_tolerance=1e-2,        ## stop when validation logloss does not improve by >=1% for 2 scoring events
+  stopping_rounds=2,
+  score_validation_samples=10000, ## downsample validation set for faster scoring
+  score_duty_cycle=0.025,         ## don't score more than 2.5% of the wall time
+  adaptive_rate=F,                ## manually tuned learning rate
+  rate=0.25, 
+  rate_annealing=2e-6,            
+  momentum_start=0.2,             ## manually tuned momentum
+  momentum_stable=0.4, 
+  momentum_ramp=1e7, 
+  l1=1e-5,                        ## add some L1/L2 regularization
+  l2=1e-5,
+  max_w2=10                       ## helps stability for Rectifier
+) 
+summary(m_cont)
+plot(m_cont)
+
+
+dlmodel <- h2o.deeplearning(
+  x=myX,
+  y=myY, 
+  training_frame=train,
+  hidden=c(10,10),
+  epochs=1,
+  nfolds=5,
+  seed = 1996,keep_cross_validation_predictions = TRUE,
+  fold_assignment="AUTO" # can be "AUTO", "Modulo", "Random" or "Stratified"
+)
+dlmodel
+plot(dlmodel)
+
+mpred <- h2o.predict(model,valid)
+
+
+my_rf <- h2o.randomForest(x = myX,
+                          y = myY,
+                          training_frame = train,
+                          ntrees = 50,
+                          nfolds = 5,
+                          keep_cross_validation_predictions = TRUE,
+                          seed = 1996)
+
+# Train a stacked ensemble using the GBM and RF above
+ensemble <- h2o.stackedEnsemble(x = myX,
+                                y = myY,
+                                training_frame = train,
+                                base_models = list(model, my_rf))
+
+perf <- h2o.performance(ensemble, newdata = valid)
+perf
+
+epred <- h2o.predict(ensemble, newdata = valid)
+epred
+
+
+learn_rate_opt <- c(0.01, 0.03)
+max_depth_opt <- c(3, 4, 5, 6, 9)
+sample_rate_opt <- c(0.7, 0.8, 0.9, 1.0)
+col_sample_rate_opt <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
+hyper_params <- list(learn_rate = learn_rate_opt,
+                     max_depth = max_depth_opt,
+                     sample_rate = sample_rate_opt,
+                     col_sample_rate = col_sample_rate_opt)
+
+search_criteria <- list(strategy = "RandomDiscrete",
+                        max_models = 3,
+                        seed = 1)
+
+gbm_grid <- h2o.grid(algorithm = "gbm",
+                     grid_id = "gbm_grid_binomial",
+                     x = myX,
+                     y = myY,
+                     training_frame = train,
+                     ntrees = 100,
+                     seed = 1,
+                     nfolds = 5,
+                     keep_cross_validation_predictions = TRUE,
+                     hyper_params = hyper_params,
+                     search_criteria = search_criteria)
+
+ensemble <- h2o.stackedEnsemble(x = myX,
+                                y = myY,
+                                training_frame = train,
+                                base_models = gbm_grid@model_ids)
+
+perf <- h2o.performance(ensemble, newdata = valid)
+perf
