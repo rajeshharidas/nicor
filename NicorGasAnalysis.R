@@ -659,3 +659,13 @@ ensemble <- h2o.stackedEnsemble(x = myX,
 
 perf <- h2o.performance(ensemble, newdata = valid)
 perf
+
+aml <- h2o.automl(x = myX, y = myY,
+                  training_frame = train,
+                  max_models = 20,
+                  seed = 1996)
+
+# View the AutoML Leaderboard
+lb <- aml@leaderboard
+print(lb, n = nrow(lb))
+aml@leader
